@@ -2,6 +2,8 @@ import asyncio
 import os
 import re
 import multiprocessing
+from multiprocessing import cpu_count
+
 from pyppeteer import launch
 import requests
 from pyquery import PyQuery as pq
@@ -11,6 +13,8 @@ from pyquery import PyQuery as pq
 sao_url = 'https://www.dj666666.com/saomai----55----1.html'
 cuimian_url = 'https://www.dj666666.com/ziweicunmian----56----1.html'
 
+tast_dict = []
+run_dict = []
 
 def main(url, dict):
     home_r = requests.get(url)
@@ -21,12 +25,12 @@ def main(url, dict):
         page_doc = pq(nav_page_r.text)
         for mname in page_doc('.mname').items():
             # 加入多进程
-            p = multiprocessing.Process(target=tast, args=(mname.attr('href'), dict))
-            p.start()
+            tast_dict.append((mname.attr('href'), dict))
 
 
-def tast(url, dict):
-    asyncio.get_event_loop().run_until_complete(download(url, dict))
+def tast(args):
+    for arg in args:
+        asyncio.get_event_loop().run_until_complete(download(arg[0], arg[1]))
 
 
 def validateTitle(title):
@@ -41,12 +45,11 @@ async def download(url, dict):
     await page.goto(url)
     await page.waitForSelector('#myMusic')
     music_url = await page.Jeval('#myMusic', 'el => el.getAttribute("src")')
-    print(music_url)
     music_r = requests.get(music_url)
     parentDir = './consequent/' + dict
     path = parentDir + '/' + validateTitle(await page.Jeval('.player h1', 'el => el.innerText')) + '.m4a'
     if not os.path.isdir(parentDir):
-        os.mkdir(parentDir)
+        os.makedirs(parentDir)
 
     with open(path, 'wb') as f:
         f.write(music_r.content)
@@ -54,6 +57,15 @@ async def download(url, dict):
 
     print('done')
 
+if __name__ == '__main__':
+    main(sao_url, 'sao')
+    main(cuimian_url, 'cuimian')
+    cpu_number = cpu_count()
+    run_dict = [[] for i in range(cpu_number)]
+    for index, value in enumerate(tast_dict):
+        run_dict[index % 4].append(value)
 
-main(sao_url, 'sao')
-main(cuimian_url, 'cuimian')
+    for i in range(cpu_number):
+        p = multiprocessing.Process(target=tast, args=(run_dict[i],))
+        p.start()
+
